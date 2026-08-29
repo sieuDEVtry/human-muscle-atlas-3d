@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Bounds, OrbitControls, useCursor, useGLTF, useProgress } from "@react-three/drei";
+import { OrbitControls, useCursor, useGLTF, useProgress } from "@react-three/drei";
 import { Activity, Hand, Info, MousePointer2, Rotate3D, X } from "lucide-react";
 import * as THREE from "three";
 
@@ -71,6 +71,20 @@ function groupFromObject(object) {
   return null;
 }
 
+function normalizeAroundOrigin(object, targetSize) {
+  object.updateMatrixWorld(true);
+  const sourceBounds = new THREE.Box3().setFromObject(object);
+  const center = sourceBounds.getCenter(new THREE.Vector3());
+  const size = sourceBounds.getSize(new THREE.Vector3());
+  const scale = targetSize / Math.max(size.x, size.y, size.z);
+  const wrapper = new THREE.Group();
+  wrapper.add(object);
+  wrapper.scale.setScalar(scale);
+  wrapper.position.copy(center).multiplyScalar(-scale);
+  wrapper.updateMatrixWorld(true);
+  return wrapper;
+}
+
 function AnatomyModel({ hovered, onHover, onSelect }) {
   const { scene } = useGLTF("./models/human-muscles.glb");
   const invalidate = useThree((state) => state.invalidate);
@@ -100,11 +114,7 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
         object.renderOrder = 1;
       }
     });
-    clone.updateMatrixWorld(true);
-    const center = new THREE.Box3().setFromObject(clone).getCenter(new THREE.Vector3());
-    clone.position.sub(center);
-    clone.updateMatrixWorld(true);
-    return clone;
+    return normalizeAroundOrigin(clone, 4.15);
   }, [scene]);
 
   useCursor(Boolean(hovered));
@@ -181,11 +191,8 @@ function DetailModel({ groupId, leaderRefs, svgRef }) {
       });
     });
 
-    clone.updateMatrixWorld(true);
-    const sourceCenter = new THREE.Box3().setFromObject(clone).getCenter(new THREE.Vector3());
-    clone.position.sub(sourceCenter);
-    clone.updateMatrixWorld(true);
-    clone.traverse((object) => object.isMesh && box.expandByObject(object));
+    const normalizedModel = normalizeAroundOrigin(clone, 3.15);
+    normalizedModel.traverse((object) => object.isMesh && box.expandByObject(object));
 
     const size = box.getSize(new THREE.Vector3());
     const min = box.min;
@@ -194,16 +201,14 @@ function DetailModel({ groupId, leaderRefs, svgRef }) {
       new THREE.Vector3(min.x + size.x * 0.63, min.y + size.y * 0.5, min.z + size.z * 0.48),
       new THREE.Vector3(min.x + size.x * 0.42, min.y + size.y * 0.25, min.z + size.z * 0.52),
     ];
-    return { model: clone, anchors: positions };
+    return { model: normalizedModel, anchors: positions };
   }, [scene]);
 
   useEffect(() => invalidate(), [invalidate, model]);
 
   return (
     <>
-      <Bounds fit clip margin={1.28}>
-        <primitive object={model} />
-      </Bounds>
+      <primitive object={model} />
       <ProjectionTracker anchors={anchors} leaderRefs={leaderRefs} svgRef={svgRef} />
     </>
   );
@@ -258,12 +263,12 @@ function DetailModal({ group, onClose }) {
         <div className="detail-layout">
           <div className="detail-visual">
             <Suspense fallback={<DetailLoading label={group.label} />}>
-              <Canvas frameloop="demand" dpr={[1, 1.35]} camera={{ fov: 36, near: 0.01, far: 1000 }} gl={{ antialias: true, alpha: true }}>
+              <Canvas frameloop="demand" dpr={[1, 1.35]} camera={{ position: [0, 0, 5.8], fov: 36, near: 0.1, far: 100 }} gl={{ antialias: true, alpha: true }}>
                 <hemisphereLight intensity={2.15} color="#fff2e9" groundColor="#211418" />
                 <directionalLight position={[3, 6, 7]} intensity={3.25} color="#ffe2d5" />
                 <directionalLight position={[-4, -1, -5]} intensity={1.5} color="#8f8294" />
                 <DetailModel groupId={group.id} leaderRefs={leaderRefs} svgRef={svgRef} />
-                <OrbitControls makeDefault target={[0, 0, 0]} enablePan={false} enableDamping dampingFactor={0.08} rotateSpeed={0.75} minPolarAngle={0.28} maxPolarAngle={Math.PI - 0.28} />
+                <OrbitControls makeDefault target={[0, 0, 0]} enablePan={false} enableDamping dampingFactor={0.08} rotateSpeed={0.75} minDistance={3.7} maxDistance={8} minPolarAngle={0.28} maxPolarAngle={Math.PI - 0.28} />
               </Canvas>
             </Suspense>
 
@@ -363,13 +368,11 @@ export default function App() {
         <div className="model-stage" aria-label="Mô hình 3D cơ thể người">
           <div className="stage-label"><span>ANTERIOR</span><i /><span>POSTERIOR</span></div>
           <Suspense fallback={<LoadingStatus />}>
-            <Canvas frameloop="demand" dpr={[1, 1.35]} camera={{ fov: 31, near: 0.01, far: 1000 }} gl={{ antialias: true, alpha: true }}>
+            <Canvas frameloop="demand" dpr={[1, 1.35]} camera={{ position: [0, 0, 8.5], fov: 31, near: 0.1, far: 100 }} gl={{ antialias: true, alpha: true }}>
               <hemisphereLight intensity={2.05} color="#fff1e9" groundColor="#221318" />
               <directionalLight position={[4, 7, 6]} intensity={2.9} color="#ffe0d4" />
               <directionalLight position={[-5, 1, -3]} intensity={1.35} color="#918497" />
-              <Bounds fit clip margin={1.12}>
-                <AnatomyModel hovered={hovered} onHover={setHovered} onSelect={setSelected} />
-              </Bounds>
+              <AnatomyModel hovered={hovered} onHover={setHovered} onSelect={setSelected} />
               <OrbitControls
                 makeDefault
                 target={[0, 0, 0]}
@@ -379,8 +382,8 @@ export default function App() {
                 rotateSpeed={0.7}
                 minPolarAngle={Math.PI / 2 - 0.22}
                 maxPolarAngle={Math.PI / 2 + 0.22}
-                minDistance={0.4}
-                maxDistance={12}
+                minDistance={6}
+                maxDistance={11}
               />
             </Canvas>
           </Suspense>
