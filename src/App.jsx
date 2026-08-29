@@ -100,6 +100,10 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
         object.renderOrder = 1;
       }
     });
+    clone.updateMatrixWorld(true);
+    const center = new THREE.Box3().setFromObject(clone).getCenter(new THREE.Vector3());
+    clone.position.sub(center);
+    clone.updateMatrixWorld(true);
     return clone;
   }, [scene]);
 
@@ -177,6 +181,9 @@ function DetailModel({ groupId, leaderRefs, svgRef }) {
       });
     });
 
+    clone.updateMatrixWorld(true);
+    const sourceCenter = new THREE.Box3().setFromObject(clone).getCenter(new THREE.Vector3());
+    clone.position.sub(sourceCenter);
     clone.updateMatrixWorld(true);
     clone.traverse((object) => object.isMesh && box.expandByObject(object));
 
@@ -256,7 +263,7 @@ function DetailModal({ group, onClose }) {
                 <directionalLight position={[3, 6, 7]} intensity={3.25} color="#ffe2d5" />
                 <directionalLight position={[-4, -1, -5]} intensity={1.5} color="#8f8294" />
                 <DetailModel groupId={group.id} leaderRefs={leaderRefs} svgRef={svgRef} />
-                <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.08} rotateSpeed={0.75} minPolarAngle={0.28} maxPolarAngle={Math.PI - 0.28} />
+                <OrbitControls makeDefault target={[0, 0, 0]} enablePan={false} enableDamping dampingFactor={0.08} rotateSpeed={0.75} minPolarAngle={0.28} maxPolarAngle={Math.PI - 0.28} />
               </Canvas>
             </Suspense>
 
@@ -365,6 +372,7 @@ export default function App() {
               </Bounds>
               <OrbitControls
                 makeDefault
+                target={[0, 0, 0]}
                 enablePan={false}
                 enableDamping
                 dampingFactor={0.08}
