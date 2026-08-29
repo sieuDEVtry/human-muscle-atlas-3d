@@ -1,0 +1,30 @@
+{
+  "body": {
+    "source_meshes": 98,
+    "polygons": 282498
+  },
+  "abs": {
+    "source_meshes": 4,
+    "polygons": 84378
+  },
+  "thigh": {
+    "source_meshes": 12,
+    "polygons": 67182
+  },
+  "shoulder": {
+    "source_meshes": 6,
+    "polygons": 17208
+  },
+  "arm": {
+    "source_meshes": 12,
+    "polygons": 33022
+  },
+  "chest": {
+    "source_meshes": 6,
+    "polygons": 9374
+  },
+  "glutes": {
+    "source_meshes": 6,
+    "polygons": 24780
+  }
+}

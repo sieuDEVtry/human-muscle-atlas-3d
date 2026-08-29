@@ -1,5 +1,5 @@
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Bounds, OrbitControls, useCursor, useGLTF, useProgress } from "@react-three/drei";
 import { Activity, Hand, Info, MousePointer2, Rotate3D, X } from "lucide-react";
 import * as THREE from "three";
@@ -73,14 +73,19 @@ function groupFromObject(object) {
 
 function AnatomyModel({ hovered, onHover, onSelect }) {
   const { scene } = useGLTF("./models/human-muscles.glb");
+  const invalidate = useThree((state) => state.invalidate);
   const model = useMemo(() => {
     const clone = scene.clone(true);
     clone.traverse((object) => {
       if (!object.isMesh) return;
       object.material = object.material.clone();
       object.material.side = THREE.DoubleSide;
-      object.userData.baseColor = object.material.color.clone();
-      object.userData.baseRoughness = object.material.roughness;
+      object.material.metalness = 0;
+      object.material.roughness = 0.68;
+      const group = groupFromObject(object);
+      const baseColor = group ? "#a72c35" : "#711e27";
+      object.material.color.set(baseColor);
+      object.userData.baseColor = new THREE.Color(baseColor);
     });
     return clone;
   }, [scene]);
@@ -93,16 +98,17 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
       const group = groupFromObject(object);
       const active = group && group === hovered;
       object.material.color.copy(object.userData.baseColor);
-      object.material.emissive.set(active ? "#ff4d46" : "#000000");
-      object.material.emissiveIntensity = active ? 0.52 : 0;
-      object.material.roughness = active ? 0.42 : object.userData.baseRoughness;
+      object.material.emissive.set(active ? "#ff554d" : "#160204");
+      object.material.emissiveIntensity = active ? 0.78 : 0.1;
+      object.material.roughness = active ? 0.48 : 0.68;
     });
-  }, [hovered, model]);
+    invalidate();
+  }, [hovered, invalidate, model]);
 
   return (
     <primitive
       object={model}
-      onPointerMove={(event) => {
+      onPointerOver={(event) => {
         event.stopPropagation();
         onHover(groupFromObject(event.object));
       }}
@@ -117,44 +123,47 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
   );
 }
 
-function ProjectionTracker({ anchors, onProject }) {
+function ProjectionTracker({ anchors, leaderRefs, svgRef }) {
   useFrame(({ camera, size }) => {
-    const points = anchors.map((anchor) => {
+    svgRef.current?.setAttribute("viewBox", `0 0 ${size.width} ${size.height}`);
+    anchors.forEach((anchor, index) => {
       const point = anchor.clone().project(camera);
-      return {
-        x: Math.round((point.x * 0.5 + 0.5) * size.width),
-        y: Math.round((-point.y * 0.5 + 0.5) * size.height),
-        behind: point.z > 1,
-      };
+      const x = Math.round((point.x * 0.5 + 0.5) * size.width);
+      const y = Math.round((-point.y * 0.5 + 0.5) * size.height);
+      const endY = size.height * ((index + 1) / 4);
+      const refs = leaderRefs.current[index];
+      if (!refs) return;
+      refs.line?.setAttribute("points", `${x},${y} ${size.width * 0.82},${endY} ${size.width},${endY}`);
+      refs.outer?.setAttribute("cx", x);
+      refs.outer?.setAttribute("cy", y);
+      refs.inner?.setAttribute("cx", x);
+      refs.inner?.setAttribute("cy", y);
+      refs.group?.classList.toggle("is-behind", point.z > 1);
     });
-    onProject({ points, width: size.width, height: size.height });
   });
   return null;
 }
 
-function DetailModel({ groupId, onProject }) {
-  const { scene } = useGLTF("./models/human-muscles.glb");
+function DetailModel({ groupId, leaderRefs, svgRef }) {
+  const { scene } = useGLTF(`./models/groups/${groupId}.glb`);
+  const invalidate = useThree((state) => state.invalidate);
   const { model, anchors } = useMemo(() => {
     const clone = scene.clone(true);
     const box = new THREE.Box3();
 
     clone.traverse((object) => {
       if (!object.isMesh) return;
-      const visible = groupFromObject(object) === groupId;
-      object.visible = visible;
-      if (!visible) return;
       object.material = object.material.clone();
-      object.material.color.set("#a9212d");
-      object.material.emissive.set("#2a0307");
-      object.material.emissiveIntensity = 0.18;
-      object.material.roughness = 0.56;
+      object.material.color.set("#bc303a");
+      object.material.emissive.set("#260306");
+      object.material.emissiveIntensity = 0.2;
+      object.material.metalness = 0;
+      object.material.roughness = 0.62;
       object.material.side = THREE.DoubleSide;
     });
 
     clone.updateMatrixWorld(true);
-    clone.traverse((object) => {
-      if (object.isMesh && object.visible) box.expandByObject(object);
-    });
+    clone.traverse((object) => object.isMesh && box.expandByObject(object));
 
     const size = box.getSize(new THREE.Vector3());
     const min = box.min;
@@ -164,33 +173,23 @@ function DetailModel({ groupId, onProject }) {
       new THREE.Vector3(min.x + size.x * 0.42, min.y + size.y * 0.25, min.z + size.z * 0.52),
     ];
     return { model: clone, anchors: positions };
-  }, [groupId, scene]);
+  }, [scene]);
+
+  useEffect(() => invalidate(), [invalidate, model]);
 
   return (
     <>
-      <Bounds fit clip observe margin={1.32}>
+      <Bounds fit clip margin={1.28}>
         <primitive object={model} />
       </Bounds>
-      <ProjectionTracker anchors={anchors} onProject={onProject} />
+      <ProjectionTracker anchors={anchors} leaderRefs={leaderRefs} svgRef={svgRef} />
     </>
   );
 }
 
 function DetailModal({ group, onClose }) {
-  const [projection, setProjection] = useState({ points: [], width: 1, height: 1 });
-
-  const updateProjection = useCallback((next) => {
-    setProjection((current) => {
-      const unchanged = current.width === next.width && current.height === next.height
-        && current.points.length === next.points.length
-        && current.points.every((point, index) => {
-          const candidate = next.points[index];
-          return Math.abs(point.x - candidate.x) < 2 && Math.abs(point.y - candidate.y) < 2
-            && point.behind === candidate.behind;
-        });
-      return unchanged ? current : next;
-    });
-  }, []);
+  const svgRef = useRef(null);
+  const leaderRefs = useRef([]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -223,30 +222,30 @@ function DetailModal({ group, onClose }) {
 
         <div className="detail-layout">
           <div className="detail-visual">
-            <Canvas dpr={[1, 1.7]} camera={{ fov: 36, near: 0.01, far: 1000 }} gl={{ antialias: true, alpha: true }}>
-              <ambientLight intensity={1.8} />
-              <directionalLight position={[3, 6, 7]} intensity={4} color="#ffd4c7" />
-              <directionalLight position={[-4, -1, -5]} intensity={2} color="#9b4f68" />
-              <DetailModel groupId={group.id} onProject={updateProjection} />
-              <OrbitControls makeDefault enablePan={false} minPolarAngle={0.28} maxPolarAngle={Math.PI - 0.28} />
-            </Canvas>
+            <Suspense fallback={<div className="detail-loading"><Activity size={17} /> Đang tải nhóm cơ…</div>}>
+              <Canvas frameloop="demand" dpr={[1, 1.35]} camera={{ fov: 36, near: 0.01, far: 1000 }} gl={{ antialias: true, alpha: true }}>
+                <hemisphereLight intensity={1.8} color="#ffe2d6" groundColor="#241013" />
+                <directionalLight position={[3, 6, 7]} intensity={3.7} color="#ffd4c7" />
+                <directionalLight position={[-4, -1, -5]} intensity={1.8} color="#9b4f68" />
+                <DetailModel groupId={group.id} leaderRefs={leaderRefs} svgRef={svgRef} />
+                <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.08} rotateSpeed={0.75} minPolarAngle={0.28} maxPolarAngle={Math.PI - 0.28} />
+              </Canvas>
+            </Suspense>
 
             <svg
+              ref={svgRef}
               className="leader-lines"
-              viewBox={`0 0 ${projection.width} ${projection.height}`}
+              viewBox="0 0 1 1"
               preserveAspectRatio="none"
               aria-hidden="true"
             >
-              {projection.points.map((point, index) => {
-                const endY = projection.height * ((index + 1) / 4);
-                return (
-                  <g key={index} className={point.behind ? "is-behind" : ""}>
-                    <polyline points={`${point.x},${point.y} ${projection.width * 0.82},${endY} ${projection.width},${endY}`} />
-                    <circle cx={point.x} cy={point.y} r="5" />
-                    <circle className="leader-core" cx={point.x} cy={point.y} r="2" />
-                  </g>
-                );
-              })}
+              {[0, 1, 2].map((index) => (
+                <g key={index} ref={(node) => { leaderRefs.current[index] = { ...leaderRefs.current[index], group: node }; }}>
+                  <polyline ref={(node) => { leaderRefs.current[index] = { ...leaderRefs.current[index], line: node }; }} />
+                  <circle ref={(node) => { leaderRefs.current[index] = { ...leaderRefs.current[index], outer: node }; }} r="5" />
+                  <circle ref={(node) => { leaderRefs.current[index] = { ...leaderRefs.current[index], inner: node }; }} className="leader-core" r="2" />
+                </g>
+              ))}
             </svg>
 
             <div className="detail-rotate-hint"><Rotate3D size={17} /> Kéo để xoay 360°</div>
@@ -322,25 +321,26 @@ export default function App() {
 
           <div className="interaction-hint">
             <Hand size={19} />
-            <span><strong>Kéo để xoay 180°</strong><small>Cuộn để phóng to · thu nhỏ</small></span>
+            <span><strong>Kéo để xoay 360°</strong><small>Cuộn để phóng to · thu nhỏ</small></span>
           </div>
         </div>
 
         <div className="model-stage" aria-label="Mô hình 3D cơ thể người">
           <div className="stage-label"><span>ANTERIOR</span><i /><span>POSTERIOR</span></div>
           <Suspense fallback={<LoadingStatus />}>
-            <Canvas dpr={[1, 1.6]} camera={{ fov: 31, near: 0.01, far: 1000 }} gl={{ antialias: true, alpha: true }}>
-              <ambientLight intensity={1.45} />
+            <Canvas frameloop="demand" dpr={[1, 1.35]} camera={{ fov: 31, near: 0.01, far: 1000 }} gl={{ antialias: true, alpha: true }}>
+              <hemisphereLight intensity={1.5} color="#ffe1d8" groundColor="#1b090d" />
               <directionalLight position={[4, 7, 6]} intensity={3.2} color="#ffd7c9" />
               <directionalLight position={[-5, 1, -3]} intensity={1.7} color="#bc7890" />
-              <Bounds fit clip observe margin={1.12}>
+              <Bounds fit clip margin={1.12}>
                 <AnatomyModel hovered={hovered} onHover={setHovered} onSelect={setSelected} />
               </Bounds>
               <OrbitControls
                 makeDefault
                 enablePan={false}
-                minAzimuthAngle={-Math.PI / 2}
-                maxAzimuthAngle={Math.PI / 2}
+                enableDamping
+                dampingFactor={0.08}
+                rotateSpeed={0.7}
                 minPolarAngle={Math.PI / 2 - 0.22}
                 maxPolarAngle={Math.PI / 2 + 0.22}
                 minDistance={0.4}
