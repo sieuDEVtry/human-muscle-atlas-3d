@@ -36,78 +36,53 @@ function normalizeAroundOrigin(object, targetSize) {
   return wrapper;
 }
 
-function isolateRectusAbdominis(geometry) {
-  if (!geometry?.index || geometry.userData?.rectusIsolated) return geometry;
+function extractAbdominalRegion(geometry) {
+  if (!geometry?.index || geometry.userData?.abdomenRegion) return geometry;
 
   const index = geometry.index.array;
   const position = geometry.attributes.position;
-  const vertexCount = position.count;
-  const parent = new Int32Array(vertexCount);
-  for (let vertex = 0; vertex < vertexCount; vertex += 1) parent[vertex] = vertex;
-
-  const find = (value) => {
-    let root = value;
-    while (parent[root] !== root) root = parent[root];
-    while (parent[value] !== value) {
-      const next = parent[value];
-      parent[value] = root;
-      value = next;
-    }
-    return root;
-  };
-
-  const union = (a, b) => {
-    const rootA = find(a);
-    const rootB = find(b);
-    if (rootA !== rootB) parent[rootB] = rootA;
-  };
-
-  for (let offset = 0; offset < index.length; offset += 3) {
-    union(index[offset], index[offset + 1]);
-    union(index[offset + 1], index[offset + 2]);
-  }
-
-  const stats = new Map();
-  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
-    const root = find(vertex);
-    const x = position.getX(vertex);
-    const z = position.getZ(vertex);
-    const stat = stats.get(root) || { root, count: 0, sumX: 0, minZ: Infinity, maxZ: -Infinity };
-    stat.count += 1;
-    stat.sumX += x;
-    stat.minZ = Math.min(stat.minZ, z);
-    stat.maxZ = Math.max(stat.maxZ, z);
-    stats.set(root, stat);
-  }
-
-  const components = [...stats.values()]
-    .map((stat) => ({ ...stat, centerX: stat.sumX / stat.count, verticalSpan: stat.maxZ - stat.minZ }))
-    .filter((stat) => stat.count > 20);
-
-  const bestOnSide = (sign) => components
-    .filter((stat) => Math.sign(stat.centerX) === sign)
-    .sort((a, b) => b.verticalSpan - a.verticalSpan || Math.abs(a.centerX) - Math.abs(b.centerX))[0];
-
-  const selected = [bestOnSide(-1), bestOnSide(1)].filter(Boolean);
-  if (selected.length < 2) {
-    selected.splice(0, selected.length, ...components.sort((a, b) => b.verticalSpan - a.verticalSpan).slice(0, 2));
-  }
-  if (!selected.length) return geometry;
-
-  const selectedRoots = new Set(selected.map((stat) => stat.root));
   const kept = [];
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const ab = new THREE.Vector3();
+  const ac = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+
   for (let offset = 0; offset < index.length; offset += 3) {
-    if (selectedRoots.has(find(index[offset]))) {
-      kept.push(index[offset], index[offset + 1], index[offset + 2]);
-    }
+    const ia = index[offset];
+    const ib = index[offset + 1];
+    const ic = index[offset + 2];
+    a.fromBufferAttribute(position, ia);
+    b.fromBufferAttribute(position, ib);
+    c.fromBufferAttribute(position, ic);
+
+    const x = (a.x + b.x + c.x) / 3;
+    const y = (a.y + b.y + c.y) / 3;
+    const z = (a.z + b.z + c.z) / 3;
+
+    // Z is head-to-foot in the source mesh; +Y is anterior. Select the
+    // visible abdominal wall below the pectorals and above the upper pelvis,
+    // including the central rectus and superficial oblique region on both sides.
+    if (z < -2.18 || z > 0.62 || Math.abs(x) > 1.24 || y < -0.06) continue;
+
+    ab.subVectors(b, a);
+    ac.subVectors(c, a);
+    normal.crossVectors(ab, ac).normalize();
+    if (normal.y < -0.28) continue;
+
+    kept.push(ia, ib, ic);
   }
 
-  const isolated = geometry.clone();
-  isolated.setIndex(kept);
-  isolated.computeBoundingBox();
-  isolated.computeBoundingSphere();
-  isolated.userData = { ...geometry.userData, rectusIsolated: true };
-  return isolated;
+  if (!kept.length) return geometry;
+
+  const abdomen = geometry.clone();
+  abdomen.setIndex(kept);
+  abdomen.clearGroups();
+  abdomen.computeBoundingBox();
+  abdomen.computeBoundingSphere();
+  abdomen.userData = { ...geometry.userData, abdomenRegion: true };
+  return abdomen;
 }
 
 function createMuscleMaterial(detail = false) {
@@ -128,10 +103,13 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
 
   const model = useMemo(() => {
     const clone = scene.clone(true);
+    const bodySource = clone.getObjectByName("body__muscular_study");
+    const abdominalGeometry = bodySource?.geometry ? extractAbdominalRegion(bodySource.geometry) : null;
+
     clone.traverse((object) => {
       if (!object.isMesh) return;
       const group = groupFromObject(object);
-      if (group === "abs") object.geometry = isolateRectusAbdominis(object.geometry);
+      if (group === "abs" && abdominalGeometry) object.geometry = abdominalGeometry.clone();
       object.material = createMuscleMaterial(false);
       object.userData.baseColor = object.material.color.clone();
       object.userData.muscleGroup = group;
@@ -233,6 +211,10 @@ function closestVertex(meshes, target) {
 function buildDetailGeometry(scene, group) {
   const clone = scene.clone(true);
   const toRemove = [];
+  const bodySource = clone.getObjectByName("body__muscular_study");
+  const abdominalGeometry = group.id === "abs" && bodySource?.geometry
+    ? extractAbdominalRegion(bodySource.geometry)
+    : null;
 
   clone.traverse((object) => {
     if (!object.isMesh) return;
@@ -240,7 +222,7 @@ function buildDetailGeometry(scene, group) {
       toRemove.push(object);
       return;
     }
-    if (group.id === "abs") object.geometry = isolateRectusAbdominis(object.geometry);
+    if (group.id === "abs" && abdominalGeometry) object.geometry = abdominalGeometry.clone();
     object.material = createMuscleMaterial(true);
   });
 
@@ -541,8 +523,8 @@ export default function App() {
                 rotateSpeed={0.7}
                 minPolarAngle={Math.PI / 2 - 0.22}
                 maxPolarAngle={Math.PI / 2 + 0.22}
-                minAzimuthAngle={-Math.PI}
-                maxAzimuthAngle={0}
+                minAzimuthAngle={-Math.PI / 2}
+                maxAzimuthAngle={Math.PI / 2}
                 minDistance={6}
                 maxDistance={11}
               />
