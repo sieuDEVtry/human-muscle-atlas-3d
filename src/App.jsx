@@ -36,55 +36,6 @@ function normalizeAroundOrigin(object, targetSize) {
   return wrapper;
 }
 
-function extractAbdominalRegion(geometry) {
-  if (!geometry?.index || geometry.userData?.abdomenRegion) return geometry;
-
-  const index = geometry.index.array;
-  const position = geometry.attributes.position;
-  const kept = [];
-  const a = new THREE.Vector3();
-  const b = new THREE.Vector3();
-  const c = new THREE.Vector3();
-  const ab = new THREE.Vector3();
-  const ac = new THREE.Vector3();
-  const normal = new THREE.Vector3();
-
-  for (let offset = 0; offset < index.length; offset += 3) {
-    const ia = index[offset];
-    const ib = index[offset + 1];
-    const ic = index[offset + 2];
-    a.fromBufferAttribute(position, ia);
-    b.fromBufferAttribute(position, ib);
-    c.fromBufferAttribute(position, ic);
-
-    const x = (a.x + b.x + c.x) / 3;
-    const y = (a.y + b.y + c.y) / 3;
-    const z = (a.z + b.z + c.z) / 3;
-
-    // Z is head-to-foot in the source mesh; +Y is anterior. Select the
-    // visible abdominal wall below the pectorals and above the upper pelvis,
-    // including the central rectus and superficial oblique region on both sides.
-    if (z < -2.18 || z > 0.62 || Math.abs(x) > 1.24 || y < -0.06) continue;
-
-    ab.subVectors(b, a);
-    ac.subVectors(c, a);
-    normal.crossVectors(ab, ac).normalize();
-    if (normal.y < -0.28) continue;
-
-    kept.push(ia, ib, ic);
-  }
-
-  if (!kept.length) return geometry;
-
-  const abdomen = geometry.clone();
-  abdomen.setIndex(kept);
-  abdomen.clearGroups();
-  abdomen.computeBoundingBox();
-  abdomen.computeBoundingSphere();
-  abdomen.userData = { ...geometry.userData, abdomenRegion: true };
-  return abdomen;
-}
-
 function createMuscleMaterial(detail = false) {
   return new THREE.MeshPhysicalMaterial({
     color: detail ? "#c7655e" : "#92564f",
@@ -103,13 +54,9 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
 
   const model = useMemo(() => {
     const clone = scene.clone(true);
-    const bodySource = clone.getObjectByName("body__muscular_study");
-    const abdominalGeometry = bodySource?.geometry ? extractAbdominalRegion(bodySource.geometry) : null;
-
     clone.traverse((object) => {
       if (!object.isMesh) return;
       const group = groupFromObject(object);
-      if (group === "abs" && abdominalGeometry) object.geometry = abdominalGeometry.clone();
       object.material = createMuscleMaterial(false);
       object.userData.baseColor = object.material.color.clone();
       object.userData.muscleGroup = group;
@@ -211,10 +158,6 @@ function closestVertex(meshes, target) {
 function buildDetailGeometry(scene, group) {
   const clone = scene.clone(true);
   const toRemove = [];
-  const bodySource = clone.getObjectByName("body__muscular_study");
-  const abdominalGeometry = group.id === "abs" && bodySource?.geometry
-    ? extractAbdominalRegion(bodySource.geometry)
-    : null;
 
   clone.traverse((object) => {
     if (!object.isMesh) return;
@@ -222,7 +165,6 @@ function buildDetailGeometry(scene, group) {
       toRemove.push(object);
       return;
     }
-    if (group.id === "abs" && abdominalGeometry) object.geometry = abdominalGeometry.clone();
     object.material = createMuscleMaterial(true);
   });
 
