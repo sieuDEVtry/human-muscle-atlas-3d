@@ -3,69 +3,19 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, useCursor, useGLTF, useProgress } from "@react-three/drei";
 import { Activity, Hand, Info, MousePointer2, Rotate3D, X } from "lucide-react";
 import * as THREE from "three";
+import { MUSCLE_GROUPS, annotationMatchesName, classifyMuscleName } from "./anatomy-data.js";
 
-const MUSCLE_GROUPS = [
-  {
-    id: "abs", label: "Bụng", latin: "Musculi abdominis", index: "01",
-    summary: "Nhóm cơ thành bụng trước và bên, tạo nên vùng lõi giúp giữ ổn định thân mình.",
-    facts: [
-      { title: "Cơ thẳng bụng", body: "Chạy dọc hai bên đường trắng bụng; tham gia gập thân về phía trước." },
-      { title: "Cơ chéo bụng ngoài", body: "Lớp cơ nông ở hai bên, hỗ trợ xoay và nghiêng thân mình." },
-      { title: "Vai trò chính", body: "Ổn định cột sống, duy trì áp lực ổ bụng và hỗ trợ hô hấp chủ động." },
-    ],
-  },
-  {
-    id: "thigh", label: "Đùi", latin: "Musculi femoris", index: "02",
-    summary: "Tập hợp các cơ lớn quanh xương đùi, tạo lực cho khớp háng và khớp gối.",
-    facts: [
-      { title: "Nhóm tứ đầu", body: "Gồm cơ thẳng đùi và ba cơ rộng; chịu trách nhiệm chính khi duỗi gối." },
-      { title: "Cơ nhị đầu đùi", body: "Nằm phía sau ngoài đùi, giúp gập gối và hỗ trợ duỗi khớp háng." },
-      { title: "Vai trò chính", body: "Tạo lực khi đi, chạy, bật nhảy và kiểm soát cơ thể khi hạ trọng tâm." },
-    ],
-  },
-  {
-    id: "shoulder", label: "Vai", latin: "Musculus deltoideus", index: "03",
-    summary: "Khối cơ delta bao quanh khớp vai, tạo đường nét vai và điều khiển cánh tay theo nhiều hướng.",
-    facts: [
-      { title: "Bó trước", body: "Xuất phát từ xương đòn; hỗ trợ đưa cánh tay ra trước và xoay trong." },
-      { title: "Bó giữa", body: "Bám từ mỏm cùng vai; là thành phần chính khi dạng cánh tay sang bên." },
-      { title: "Bó sau", body: "Xuất phát từ gai vai; đưa cánh tay ra sau và hỗ trợ xoay ngoài." },
-    ],
-  },
-  {
-    id: "arm", label: "Bắp tay", latin: "Musculi brachii", index: "04",
-    summary: "Nhóm cơ mặt trước và sau cánh tay, phối hợp để gập hoặc duỗi khuỷu tay.",
-    facts: [
-      { title: "Cơ nhị đầu cánh tay", body: "Hai đầu cơ hội tụ ở cẳng tay; gập khuỷu và xoay ngửa cẳng tay." },
-      { title: "Cơ tam đầu cánh tay", body: "Ba đầu cơ ở mặt sau cánh tay; là cơ duỗi khuỷu chính." },
-      { title: "Cơ cánh tay", body: "Nằm sâu dưới cơ nhị đầu và tạo lực gập khuỷu ổn định ở nhiều tư thế." },
-    ],
-  },
-  {
-    id: "chest", label: "Ngực", latin: "Musculus pectoralis major", index: "05",
-    summary: "Cơ ngực lớn phủ mặt trước lồng ngực và nối thân mình với xương cánh tay.",
-    facts: [
-      { title: "Đầu đòn", body: "Phần trên của cơ ngực, hỗ trợ đưa cánh tay lên trước." },
-      { title: "Đầu ức–sườn", body: "Phần lớn nhất, khép cánh tay và kéo cánh tay từ tư thế nâng xuống." },
-      { title: "Vai trò chính", body: "Khép và xoay trong cánh tay; tham gia các động tác đẩy và ôm." },
-    ],
-  },
-  {
-    id: "glutes", label: "Mông", latin: "Musculi glutei", index: "06",
-    summary: "Ba lớp cơ vùng mông ổn định khung chậu và tạo lực mạnh cho chuyển động khớp háng.",
-    facts: [
-      { title: "Cơ mông lớn", body: "Lớp nông và lớn nhất; tạo lực duỗi háng khi đứng lên hoặc leo dốc." },
-      { title: "Cơ mông nhỡ", body: "Ổn định khung chậu khi đứng một chân và dạng đùi sang bên." },
-      { title: "Cơ mông bé", body: "Nằm sâu dưới cơ mông nhỡ; hỗ trợ dạng và xoay trong đùi." },
-    ],
-  },
-];
+const GROUP_IDS = new Set(MUSCLE_GROUPS.map((group) => group.id));
+const HUMAN_MODEL_URL = "./models/human-muscles.glb";
 
 function groupFromObject(object) {
   let current = object;
   while (current) {
+    const semanticGroup = classifyMuscleName(current.name);
+    if (semanticGroup) return semanticGroup;
+
     const prefix = current.name?.split("__")[0];
-    if (MUSCLE_GROUPS.some((group) => group.id === prefix)) return prefix;
+    if (GROUP_IDS.has(prefix)) return prefix;
     current = current.parent;
   }
   return null;
@@ -76,7 +26,8 @@ function normalizeAroundOrigin(object, targetSize) {
   const sourceBounds = new THREE.Box3().setFromObject(object);
   const center = sourceBounds.getCenter(new THREE.Vector3());
   const size = sourceBounds.getSize(new THREE.Vector3());
-  const scale = targetSize / Math.max(size.x, size.y, size.z);
+  const largestAxis = Math.max(size.x, size.y, size.z) || 1;
+  const scale = targetSize / largestAxis;
   const wrapper = new THREE.Group();
   wrapper.add(object);
   wrapper.scale.setScalar(scale);
@@ -85,25 +36,31 @@ function normalizeAroundOrigin(object, targetSize) {
   return wrapper;
 }
 
+function createMuscleMaterial(detail = false) {
+  return new THREE.MeshPhysicalMaterial({
+    color: detail ? "#c7655e" : "#92564f",
+    emissive: detail ? "#250708" : "#120506",
+    emissiveIntensity: detail ? 0.14 : 0.08,
+    roughness: detail ? 0.54 : 0.62,
+    metalness: 0,
+    clearcoat: detail ? 0.2 : 0.16,
+    clearcoatRoughness: detail ? 0.72 : 0.76,
+  });
+}
+
 function AnatomyModel({ hovered, onHover, onSelect }) {
-  const { scene } = useGLTF("./models/human-muscles.glb");
+  const { scene } = useGLTF(HUMAN_MODEL_URL);
   const invalidate = useThree((state) => state.invalidate);
+
   const model = useMemo(() => {
     const clone = scene.clone(true);
     clone.traverse((object) => {
       if (!object.isMesh) return;
       const group = groupFromObject(object);
-      const baseColor = "#92564f";
-      object.material = new THREE.MeshPhysicalMaterial({
-        color: baseColor,
-        emissive: "#120506",
-        emissiveIntensity: 0.08,
-        roughness: 0.62,
-        metalness: 0,
-        clearcoat: 0.16,
-        clearcoatRoughness: 0.76,
-      });
-      object.userData.baseColor = new THREE.Color(baseColor);
+      object.material = createMuscleMaterial(false);
+      object.userData.baseColor = object.material.color.clone();
+      object.userData.muscleGroup = group;
+
       if (group) {
         object.material.polygonOffset = true;
         object.material.polygonOffsetFactor = -2;
@@ -122,7 +79,7 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
   useEffect(() => {
     model.traverse((object) => {
       if (!object.isMesh) return;
-      const group = groupFromObject(object);
+      const group = object.userData.muscleGroup;
       const active = group && group === hovered;
       object.material.color.copy(object.userData.baseColor);
       object.material.emissive.set(active ? "#ff6d61" : "#120506");
@@ -136,12 +93,17 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
     <primitive
       object={model}
       onPointerOver={(event) => {
+        const group = event.object.userData.muscleGroup || groupFromObject(event.object);
+        if (!group) return;
         event.stopPropagation();
-        onHover(groupFromObject(event.object));
+        onHover(group);
       }}
-      onPointerOut={() => onHover(null)}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        onHover(null);
+      }}
       onClick={(event) => {
-        const group = groupFromObject(event.object);
+        const group = event.object.userData.muscleGroup || groupFromObject(event.object);
         if (!group) return;
         event.stopPropagation();
         onSelect(group);
@@ -150,66 +112,160 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
   );
 }
 
-function ProjectionTracker({ anchors, leaderRefs, svgRef }) {
+function meshMatchesAnnotation(mesh, annotation) {
+  let current = mesh;
+  while (current) {
+    if (annotationMatchesName(annotation, current.name)) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+function boxFromMeshes(meshes) {
+  const box = new THREE.Box3();
+  meshes.forEach((mesh) => box.expandByObject(mesh));
+  return box;
+}
+
+function normalizedBoxPoint(box, [nx, ny, nz]) {
+  const center = box.getCenter(new THREE.Vector3());
+  const half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+  return center.add(new THREE.Vector3(nx * half.x, ny * half.y, nz * half.z));
+}
+
+function closestVertex(meshes, target) {
+  const best = new THREE.Vector3();
+  const local = new THREE.Vector3();
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  meshes.forEach((mesh) => {
+    const position = mesh.geometry?.attributes?.position;
+    if (!position) return;
+    const step = Math.max(1, Math.ceil(position.count / 6500));
+    for (let index = 0; index < position.count; index += step) {
+      local.fromBufferAttribute(position, index).applyMatrix4(mesh.matrixWorld);
+      const distance = local.distanceToSquared(target);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best.copy(local);
+      }
+    }
+  });
+
+  return Number.isFinite(bestDistance) ? best : target.clone();
+}
+
+function buildDetailGeometry(scene, group) {
+  const clone = scene.clone(true);
+  const toRemove = [];
+
+  clone.traverse((object) => {
+    if (!object.isMesh) return;
+    if (groupFromObject(object) !== group.id) {
+      toRemove.push(object);
+      return;
+    }
+    object.material = createMuscleMaterial(true);
+  });
+
+  toRemove.forEach((object) => object.parent?.remove(object));
+  const normalizedModel = normalizeAroundOrigin(clone, 3.15);
+  normalizedModel.updateMatrixWorld(true);
+
+  const allMeshes = [];
+  normalizedModel.traverse((object) => object.isMesh && allMeshes.push(object));
+  const wholeBox = boxFromMeshes(allMeshes);
+
+  const anchors = group.annotations.map((annotation) => {
+    const namedMeshes = allMeshes.filter((mesh) => meshMatchesAnnotation(mesh, annotation));
+    const candidates = namedMeshes.length ? namedMeshes : allMeshes;
+    const targetBox = namedMeshes.length ? boxFromMeshes(namedMeshes) : wholeBox;
+    const target = normalizedBoxPoint(targetBox, annotation.anchor);
+    return closestVertex(candidates, target);
+  });
+
+  return { model: normalizedModel, anchors };
+}
+
+function ProjectionTracker({ anchors, model, leaderRefs, svgRef, visualRef, factRefs }) {
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const direction = useMemo(() => new THREE.Vector3(), []);
+
   useFrame(({ camera, size }) => {
     svgRef.current?.setAttribute("viewBox", `0 0 ${size.width} ${size.height}`);
+    const mobile = size.width < 680;
+    const visualRect = visualRef.current?.getBoundingClientRect();
+
     anchors.forEach((anchor, index) => {
-      const point = anchor.clone().project(camera);
-      const x = Math.round((point.x * 0.5 + 0.5) * size.width);
-      const y = Math.round((-point.y * 0.5 + 0.5) * size.height);
-      const endY = size.height * ((index + 1) / 4);
+      const projected = anchor.clone().project(camera);
+      const x = (projected.x * 0.5 + 0.5) * size.width;
+      const y = (-projected.y * 0.5 + 0.5) * size.height;
       const refs = leaderRefs.current[index];
       if (!refs) return;
-      refs.line?.setAttribute("points", `${x},${y} ${size.width * 0.82},${endY} ${size.width},${endY}`);
+
+      let endX;
+      let endY;
+      let kneeX;
+      let kneeY;
+
+      if (mobile) {
+        endX = size.width * ((index + 1) / 4);
+        endY = size.height - 24;
+        kneeX = x + (endX - x) * 0.58;
+        kneeY = Math.max(y + 12, endY - 38);
+      } else {
+        const factRect = factRefs.current[index]?.getBoundingClientRect();
+        endX = size.width - 1;
+        endY = factRect && visualRect
+          ? THREE.MathUtils.clamp(factRect.top + factRect.height * 0.5 - visualRect.top, 22, size.height - 22)
+          : size.height * ((index + 1) / 4);
+        kneeX = size.width * 0.84;
+        kneeY = endY;
+      }
+
+      refs.line?.setAttribute("points", `${x},${y} ${kneeX},${kneeY} ${endX},${endY}`);
       refs.outer?.setAttribute("cx", x);
       refs.outer?.setAttribute("cy", y);
       refs.inner?.setAttribute("cx", x);
       refs.inner?.setAttribute("cy", y);
-      refs.group?.classList.toggle("is-behind", point.z > 1);
+      refs.end?.setAttribute("cx", endX);
+      refs.end?.setAttribute("cy", endY);
+      refs.label?.setAttribute("x", mobile ? endX : endX - 11);
+      refs.label?.setAttribute("y", mobile ? endY - 10 : endY - 8);
+
+      direction.copy(anchor).sub(camera.position);
+      const anchorDistance = direction.length();
+      raycaster.set(camera.position, direction.normalize());
+      const occluded = raycaster
+        .intersectObject(model, true)
+        .some((hit) => hit.distance < anchorDistance - 0.035);
+
+      refs.group?.classList.toggle("is-behind", occluded);
+      refs.group?.classList.toggle("is-mobile-route", mobile);
     });
   });
+
   return null;
 }
 
-function DetailModel({ groupId, leaderRefs, svgRef }) {
-  const { scene } = useGLTF(`./models/groups/${groupId}.glb`);
+function DetailModel({ group, leaderRefs, svgRef, visualRef, factRefs }) {
+  const { scene } = useGLTF(HUMAN_MODEL_URL);
   const invalidate = useThree((state) => state.invalidate);
-  const { model, anchors } = useMemo(() => {
-    const clone = scene.clone(true);
-    const box = new THREE.Box3();
-
-    clone.traverse((object) => {
-      if (!object.isMesh) return;
-      object.material = new THREE.MeshPhysicalMaterial({
-        color: "#c7655e",
-        emissive: "#250708",
-        emissiveIntensity: 0.14,
-        roughness: 0.54,
-        metalness: 0,
-        clearcoat: 0.2,
-        clearcoatRoughness: 0.72,
-      });
-    });
-
-    const normalizedModel = normalizeAroundOrigin(clone, 3.15);
-    normalizedModel.traverse((object) => object.isMesh && box.expandByObject(object));
-
-    const size = box.getSize(new THREE.Vector3());
-    const min = box.min;
-    const positions = [
-      new THREE.Vector3(min.x + size.x * 0.32, min.y + size.y * 0.73, min.z + size.z * 0.55),
-      new THREE.Vector3(min.x + size.x * 0.63, min.y + size.y * 0.5, min.z + size.z * 0.48),
-      new THREE.Vector3(min.x + size.x * 0.42, min.y + size.y * 0.25, min.z + size.z * 0.52),
-    ];
-    return { model: normalizedModel, anchors: positions };
-  }, [scene]);
+  const { model, anchors } = useMemo(() => buildDetailGeometry(scene, group), [scene, group]);
 
   useEffect(() => invalidate(), [invalidate, model]);
 
   return (
     <>
       <primitive object={model} />
-      <ProjectionTracker anchors={anchors} leaderRefs={leaderRefs} svgRef={svgRef} />
+      <ProjectionTracker
+        anchors={anchors}
+        model={model}
+        leaderRefs={leaderRefs}
+        svgRef={svgRef}
+        visualRef={visualRef}
+        factRefs={factRefs}
+      />
     </>
   );
 }
@@ -229,7 +285,10 @@ function DetailLoading({ label }) {
 
 function DetailModal({ group, onClose }) {
   const svgRef = useRef(null);
+  const visualRef = useRef(null);
   const leaderRefs = useRef([]);
+  const factRefs = useRef([]);
+  const initialCamera = group.initialView === "posterior" ? [0, 0, -5.8] : [0, 0, 5.8];
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -261,29 +320,49 @@ function DetailModal({ group, onClose }) {
         </header>
 
         <div className="detail-layout">
-          <div className="detail-visual">
+          <div className="detail-visual" ref={visualRef}>
             <Suspense fallback={<DetailLoading label={group.label} />}>
-              <Canvas frameloop="demand" dpr={[1, 1.35]} camera={{ position: [0, 0, 5.8], fov: 36, near: 0.1, far: 100 }} gl={{ antialias: true, alpha: true }}>
+              <Canvas
+                frameloop="demand"
+                dpr={[1, 1.35]}
+                camera={{ position: initialCamera, fov: 36, near: 0.1, far: 100 }}
+                gl={{ antialias: true, alpha: true }}
+              >
                 <hemisphereLight intensity={2.15} color="#fff2e9" groundColor="#211418" />
                 <directionalLight position={[3, 6, 7]} intensity={3.25} color="#ffe2d5" />
                 <directionalLight position={[-4, -1, -5]} intensity={1.5} color="#8f8294" />
-                <DetailModel groupId={group.id} leaderRefs={leaderRefs} svgRef={svgRef} />
-                <OrbitControls makeDefault target={[0, 0, 0]} enablePan={false} enableDamping dampingFactor={0.08} rotateSpeed={0.75} minDistance={3.7} maxDistance={8} minPolarAngle={0.28} maxPolarAngle={Math.PI - 0.28} />
+                <DetailModel
+                  group={group}
+                  leaderRefs={leaderRefs}
+                  svgRef={svgRef}
+                  visualRef={visualRef}
+                  factRefs={factRefs}
+                />
+                <OrbitControls
+                  makeDefault
+                  target={[0, 0, 0]}
+                  enablePan={false}
+                  enableDamping
+                  dampingFactor={0.08}
+                  rotateSpeed={0.75}
+                  minDistance={3.7}
+                  maxDistance={8}
+                  minPolarAngle={0.28}
+                  maxPolarAngle={Math.PI - 0.28}
+                />
               </Canvas>
             </Suspense>
 
-            <svg
-              ref={svgRef}
-              className="leader-lines"
-              viewBox="0 0 1 1"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-            >
-              {[0, 1, 2].map((index) => (
-                <g key={index} ref={(node) => { leaderRefs.current[index] = { ...leaderRefs.current[index], group: node }; }}>
+            <svg ref={svgRef} className="leader-lines" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
+              {group.annotations.map((annotation, index) => (
+                <g key={annotation.title} ref={(node) => { leaderRefs.current[index] = { ...leaderRefs.current[index], group: node }; }}>
                   <polyline ref={(node) => { leaderRefs.current[index] = { ...leaderRefs.current[index], line: node }; }} />
                   <circle ref={(node) => { leaderRefs.current[index] = { ...leaderRefs.current[index], outer: node }; }} r="5" />
                   <circle ref={(node) => { leaderRefs.current[index] = { ...leaderRefs.current[index], inner: node }; }} className="leader-core" r="2" />
+                  <circle ref={(node) => { leaderRefs.current[index] = { ...leaderRefs.current[index], end: node }; }} className="leader-end" r="3.5" />
+                  <text ref={(node) => { leaderRefs.current[index] = { ...leaderRefs.current[index], label: node }; }} className="leader-index">
+                    {String(index + 1).padStart(2, "0")}
+                  </text>
                 </g>
               ))}
             </svg>
@@ -295,10 +374,14 @@ function DetailModal({ group, onClose }) {
           <aside className="detail-info">
             <p className="detail-summary">{group.summary}</p>
             <div className="fact-list">
-              {group.facts.map((fact, index) => (
-                <article className="fact-card" key={fact.title}>
+              {group.annotations.map((annotation, index) => (
+                <article
+                  className="fact-card"
+                  key={annotation.title}
+                  ref={(node) => { factRefs.current[index] = node; }}
+                >
                   <span>{String(index + 1).padStart(2, "0")}</span>
-                  <div><h3>{fact.title}</h3><p>{fact.body}</p></div>
+                  <div><h3>{annotation.title}</h3><p>{annotation.body}</p></div>
                 </article>
               ))}
             </div>
@@ -361,7 +444,7 @@ export default function App() {
 
           <div className="interaction-hint">
             <Hand size={19} />
-            <span><strong>Kéo để xoay 360°</strong><small>Cuộn để phóng to · thu nhỏ</small></span>
+            <span><strong>Kéo để xoay 180°</strong><small>Cuộn để phóng to · thu nhỏ</small></span>
           </div>
         </div>
 
@@ -382,6 +465,8 @@ export default function App() {
                 rotateSpeed={0.7}
                 minPolarAngle={Math.PI / 2 - 0.22}
                 maxPolarAngle={Math.PI / 2 + 0.22}
+                minAzimuthAngle={-Math.PI}
+                maxAzimuthAngle={0}
                 minDistance={6}
                 maxDistance={11}
               />
@@ -402,4 +487,4 @@ export default function App() {
   );
 }
 
-useGLTF.preload("./models/human-muscles.glb");
+useGLTF.preload(HUMAN_MODEL_URL);
