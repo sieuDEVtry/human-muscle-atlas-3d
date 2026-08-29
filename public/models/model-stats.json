@@ -1,30 +1,30 @@
 {
   "body": {
-    "source_meshes": 98,
-    "polygons": 282498
+    "source_parts": 444,
+    "polygons": 210496
   },
   "abs": {
-    "source_meshes": 4,
-    "polygons": 84378
+    "source_parts": 4,
+    "polygons": 2320
   },
   "thigh": {
-    "source_meshes": 12,
-    "polygons": 67182
+    "source_parts": 26,
+    "polygons": 31848
   },
   "shoulder": {
-    "source_meshes": 6,
-    "polygons": 17208
+    "source_parts": 12,
+    "polygons": 7462
   },
   "arm": {
-    "source_meshes": 12,
-    "polygons": 33022
+    "source_parts": 10,
+    "polygons": 9830
   },
   "chest": {
-    "source_meshes": 6,
-    "polygons": 9374
+    "source_parts": 13,
+    "polygons": 15808
   },
   "glutes": {
-    "source_meshes": 6,
-    "polygons": 24780
+    "source_parts": 2,
+    "polygons": 3534
   }
 }

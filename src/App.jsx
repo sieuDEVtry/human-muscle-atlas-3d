@@ -78,14 +78,27 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
     const clone = scene.clone(true);
     clone.traverse((object) => {
       if (!object.isMesh) return;
-      object.material = object.material.clone();
-      object.material.side = THREE.DoubleSide;
-      object.material.metalness = 0;
-      object.material.roughness = 0.68;
       const group = groupFromObject(object);
-      const baseColor = group ? "#a72c35" : "#711e27";
-      object.material.color.set(baseColor);
+      const baseColor = "#92564f";
+      object.material = new THREE.MeshPhysicalMaterial({
+        color: baseColor,
+        emissive: "#120506",
+        emissiveIntensity: 0.08,
+        roughness: 0.62,
+        metalness: 0,
+        clearcoat: 0.16,
+        clearcoatRoughness: 0.76,
+      });
       object.userData.baseColor = new THREE.Color(baseColor);
+      if (group) {
+        object.material.polygonOffset = true;
+        object.material.polygonOffsetFactor = -2;
+        object.material.polygonOffsetUnits = -2;
+        object.renderOrder = 2;
+      } else {
+        object.raycast = () => null;
+        object.renderOrder = 1;
+      }
     });
     return clone;
   }, [scene]);
@@ -98,9 +111,9 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
       const group = groupFromObject(object);
       const active = group && group === hovered;
       object.material.color.copy(object.userData.baseColor);
-      object.material.emissive.set(active ? "#ff554d" : "#160204");
-      object.material.emissiveIntensity = active ? 0.78 : 0.1;
-      object.material.roughness = active ? 0.48 : 0.68;
+      object.material.emissive.set(active ? "#ff6d61" : "#120506");
+      object.material.emissiveIntensity = active ? 0.82 : 0.08;
+      object.material.roughness = active ? 0.44 : 0.62;
     });
     invalidate();
   }, [hovered, invalidate, model]);
@@ -153,13 +166,15 @@ function DetailModel({ groupId, leaderRefs, svgRef }) {
 
     clone.traverse((object) => {
       if (!object.isMesh) return;
-      object.material = object.material.clone();
-      object.material.color.set("#bc303a");
-      object.material.emissive.set("#260306");
-      object.material.emissiveIntensity = 0.2;
-      object.material.metalness = 0;
-      object.material.roughness = 0.62;
-      object.material.side = THREE.DoubleSide;
+      object.material = new THREE.MeshPhysicalMaterial({
+        color: "#c7655e",
+        emissive: "#250708",
+        emissiveIntensity: 0.14,
+        roughness: 0.54,
+        metalness: 0,
+        clearcoat: 0.2,
+        clearcoatRoughness: 0.72,
+      });
     });
 
     clone.updateMatrixWorld(true);
@@ -184,6 +199,19 @@ function DetailModel({ groupId, leaderRefs, svgRef }) {
       </Bounds>
       <ProjectionTracker anchors={anchors} leaderRefs={leaderRefs} svgRef={svgRef} />
     </>
+  );
+}
+
+function DetailLoading({ label }) {
+  return (
+    <div className="detail-loading" role="status" aria-live="polite">
+      <span className="detail-loader-ring" aria-hidden="true" />
+      <div>
+        <small>ĐANG TẢI MÔ HÌNH 3D</small>
+        <strong>{label}</strong>
+        <p>Đang chuẩn bị cấu trúc giải phẫu…</p>
+      </div>
+    </div>
   );
 }
 
@@ -222,11 +250,11 @@ function DetailModal({ group, onClose }) {
 
         <div className="detail-layout">
           <div className="detail-visual">
-            <Suspense fallback={<div className="detail-loading"><Activity size={17} /> Đang tải nhóm cơ…</div>}>
+            <Suspense fallback={<DetailLoading label={group.label} />}>
               <Canvas frameloop="demand" dpr={[1, 1.35]} camera={{ fov: 36, near: 0.01, far: 1000 }} gl={{ antialias: true, alpha: true }}>
-                <hemisphereLight intensity={1.8} color="#ffe2d6" groundColor="#241013" />
-                <directionalLight position={[3, 6, 7]} intensity={3.7} color="#ffd4c7" />
-                <directionalLight position={[-4, -1, -5]} intensity={1.8} color="#9b4f68" />
+                <hemisphereLight intensity={2.15} color="#fff2e9" groundColor="#211418" />
+                <directionalLight position={[3, 6, 7]} intensity={3.25} color="#ffe2d5" />
+                <directionalLight position={[-4, -1, -5]} intensity={1.5} color="#8f8294" />
                 <DetailModel groupId={group.id} leaderRefs={leaderRefs} svgRef={svgRef} />
                 <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.08} rotateSpeed={0.75} minPolarAngle={0.28} maxPolarAngle={Math.PI - 0.28} />
               </Canvas>
@@ -329,9 +357,9 @@ export default function App() {
           <div className="stage-label"><span>ANTERIOR</span><i /><span>POSTERIOR</span></div>
           <Suspense fallback={<LoadingStatus />}>
             <Canvas frameloop="demand" dpr={[1, 1.35]} camera={{ fov: 31, near: 0.01, far: 1000 }} gl={{ antialias: true, alpha: true }}>
-              <hemisphereLight intensity={1.5} color="#ffe1d8" groundColor="#1b090d" />
-              <directionalLight position={[4, 7, 6]} intensity={3.2} color="#ffd7c9" />
-              <directionalLight position={[-5, 1, -3]} intensity={1.7} color="#bc7890" />
+              <hemisphereLight intensity={2.05} color="#fff1e9" groundColor="#221318" />
+              <directionalLight position={[4, 7, 6]} intensity={2.9} color="#ffe0d4" />
+              <directionalLight position={[-5, 1, -3]} intensity={1.35} color="#918497" />
               <Bounds fit clip margin={1.12}>
                 <AnatomyModel hovered={hovered} onHover={setHovered} onSelect={setSelected} />
               </Bounds>
@@ -357,7 +385,7 @@ export default function App() {
         </aside>
       </section>
 
-      <footer className="credit">Mô hình: BodyParts3D &amp; Z-Anatomy · CC BY-SA</footer>
+      <footer className="credit">Mô hình giải phẫu 3D do chủ dự án cung cấp</footer>
       {selectedGroup && <DetailModal group={selectedGroup} onClose={() => setSelected(null)} />}
     </main>
   );

@@ -134,8 +134,14 @@ h1 em { color: #b96c66; font-style: normal; font-weight: 400; }
 .detail-visual::before { content: ""; position: absolute; z-index: 0; width: min(68%, 530px); aspect-ratio: 1; left: 45%; top: 48%; transform: translate(-50%,-50%); border: 1px solid rgba(224,119,112,.1); border-radius: 50%; }
 .detail-visual::after { content: ""; position: absolute; z-index: 0; left: 45%; top: 6%; bottom: 6%; width: 1px; background: linear-gradient(transparent, rgba(224,119,112,.13), transparent); }
 .detail-visual canvas { position: relative; z-index: 2; touch-action: none; }
-.detail-loading { position: absolute; z-index: 8; inset: 0; display: flex; align-items: center; justify-content: center; gap: 9px; color: #bba5a1; font-size: 11px; letter-spacing: .06em; }
-.detail-loading svg { color: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.detail-loading { position: absolute; z-index: 8; inset: 0; display: flex; align-items: center; justify-content: center; gap: 18px; background: #0d090a; color: #f1e5e1; }
+.detail-loading::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 50% 48%, rgba(255,255,255,.035), transparent 34%); }
+.detail-loading > * { position: relative; z-index: 1; }
+.detail-loader-ring { width: 42px; height: 42px; flex: 0 0 auto; border: 2px solid rgba(255,255,255,.1); border-top-color: #ed756c; border-radius: 50%; box-shadow: 0 0 24px rgba(229,89,80,.14); animation: loader-spin .85s linear infinite; }
+.detail-loading div { display: grid; gap: 3px; min-width: 190px; }
+.detail-loading small { color: #a88f8b; font-size: 8px; font-weight: 700; letter-spacing: .22em; }
+.detail-loading strong { color: #fff3ef; font: 500 25px/1.15 "Manrope", sans-serif; }
+.detail-loading p { margin: 2px 0 0; color: #7f6c69; font-size: 10px; letter-spacing: .02em; }
 .leader-lines { position: absolute; z-index: 3; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .leader-lines polyline { fill: none; stroke: rgba(242,116,107,.74); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .leader-lines circle { fill: rgba(18,9,11,.74); stroke: #ee756c; stroke-width: 1; vector-effect: non-scaling-stroke; }
@@ -158,6 +164,7 @@ h1 em { color: #b96c66; font-style: normal; font-weight: 400; }
 .medical-note svg { color: #9b5752; }
 
 @keyframes pulse { 50% { opacity: .45; transform: scale(.92); } }
+@keyframes loader-spin { to { transform: rotate(360deg); } }
 @keyframes modal-in { from { opacity: 0; } to { opacity: 1; } }
 
 @media (max-width: 900px) {
