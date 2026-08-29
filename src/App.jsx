@@ -36,6 +36,80 @@ function normalizeAroundOrigin(object, targetSize) {
   return wrapper;
 }
 
+function isolateRectusAbdominis(geometry) {
+  if (!geometry?.index || geometry.userData?.rectusIsolated) return geometry;
+
+  const index = geometry.index.array;
+  const position = geometry.attributes.position;
+  const vertexCount = position.count;
+  const parent = new Int32Array(vertexCount);
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) parent[vertex] = vertex;
+
+  const find = (value) => {
+    let root = value;
+    while (parent[root] !== root) root = parent[root];
+    while (parent[value] !== value) {
+      const next = parent[value];
+      parent[value] = root;
+      value = next;
+    }
+    return root;
+  };
+
+  const union = (a, b) => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) parent[rootB] = rootA;
+  };
+
+  for (let offset = 0; offset < index.length; offset += 3) {
+    union(index[offset], index[offset + 1]);
+    union(index[offset + 1], index[offset + 2]);
+  }
+
+  const stats = new Map();
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    const root = find(vertex);
+    const x = position.getX(vertex);
+    const z = position.getZ(vertex);
+    const stat = stats.get(root) || { root, count: 0, sumX: 0, minZ: Infinity, maxZ: -Infinity };
+    stat.count += 1;
+    stat.sumX += x;
+    stat.minZ = Math.min(stat.minZ, z);
+    stat.maxZ = Math.max(stat.maxZ, z);
+    stats.set(root, stat);
+  }
+
+  const components = [...stats.values()]
+    .map((stat) => ({ ...stat, centerX: stat.sumX / stat.count, verticalSpan: stat.maxZ - stat.minZ }))
+    .filter((stat) => stat.count > 20);
+
+  const bestOnSide = (sign) => components
+    .filter((stat) => Math.sign(stat.centerX) === sign)
+    .sort((a, b) => b.verticalSpan - a.verticalSpan || Math.abs(a.centerX) - Math.abs(b.centerX))[0];
+
+  const selected = [bestOnSide(-1), bestOnSide(1)].filter(Boolean);
+  if (selected.length < 2) {
+    selected.splice(0, selected.length, ...components.sort((a, b) => b.verticalSpan - a.verticalSpan).slice(0, 2));
+  }
+  if (!selected.length) return geometry;
+
+  const selectedRoots = new Set(selected.map((stat) => stat.root));
+  const kept = [];
+  for (let offset = 0; offset < index.length; offset += 3) {
+    if (selectedRoots.has(find(index[offset]))) {
+      kept.push(index[offset], index[offset + 1], index[offset + 2]);
+    }
+  }
+
+  const isolated = geometry.clone();
+  isolated.setIndex(kept);
+  isolated.computeBoundingBox();
+  isolated.computeBoundingSphere();
+  isolated.userData = { ...geometry.userData, rectusIsolated: true };
+  return isolated;
+}
+
 function createMuscleMaterial(detail = false) {
   return new THREE.MeshPhysicalMaterial({
     color: detail ? "#c7655e" : "#92564f",
@@ -57,6 +131,7 @@ function AnatomyModel({ hovered, onHover, onSelect }) {
     clone.traverse((object) => {
       if (!object.isMesh) return;
       const group = groupFromObject(object);
+      if (group === "abs") object.geometry = isolateRectusAbdominis(object.geometry);
       object.material = createMuscleMaterial(false);
       object.userData.baseColor = object.material.color.clone();
       object.userData.muscleGroup = group;
@@ -165,6 +240,7 @@ function buildDetailGeometry(scene, group) {
       toRemove.push(object);
       return;
     }
+    if (group.id === "abs") object.geometry = isolateRectusAbdominis(object.geometry);
     object.material = createMuscleMaterial(true);
   });
 
