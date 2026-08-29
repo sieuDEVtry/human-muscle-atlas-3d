@@ -1,0 +1,33 @@
+name: Apply abdomen fix
+
+on:
+  push:
+    paths:
+      - scripts/apply-abdomen-fix.mjs
+      - .github/workflows/apply-abdomen-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply fix
+        run: node scripts/apply-abdomen-fix.mjs
+      - name: Validate build
+        run: npm run build
+      - name: Commit source fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.jsx src/anatomy-data.js
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix abdominal selection and symmetric rotation"
+          git push
